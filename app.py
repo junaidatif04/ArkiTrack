@@ -91,16 +91,13 @@ def ensemble_predict(image, is_facade=False):
     if not MODELS_LOADED:
         raise ValueError("Models not loaded")
 
-    # Preprocess images for models
-    if is_facade:
-        inception_preprocessed = tf.image.resize(image, (299, 299))
-        inception_preprocessed = tf.cast(inception_preprocessed, tf.float32) / 255.0
-        inception_preprocessed = tf.expand_dims(inception_preprocessed, axis=0)
-    else:
-        inception_preprocessed = tf.image.resize(image, (224, 224))
-        inception_preprocessed = tf.cast(inception_preprocessed, tf.float32) / 255.0
-        inception_preprocessed = tf.expand_dims(inception_preprocessed, axis=0)
+    # Preprocess images for each model with correct dimensions
+    # InceptionV3 requires 299x299
+    inception_preprocessed = tf.image.resize(image, (299, 299))
+    inception_preprocessed = tf.cast(inception_preprocessed, tf.float32) / 255.0
+    inception_preprocessed = tf.expand_dims(inception_preprocessed, axis=0)
 
+    # MobileNet and VGG use 224x224
     mobilenet_preprocessed = tf.image.resize(image, (224, 224))
     mobilenet_preprocessed = tf.cast(mobilenet_preprocessed, tf.float32) / 255.0
     mobilenet_preprocessed = tf.expand_dims(mobilenet_preprocessed, axis=0)
@@ -222,77 +219,6 @@ def allowed_file(filename):
 def home():
     """Render home page."""
     return render_template('home.html')
-
-def ensemble_predict(image, is_facade=False):
-    """Predict the stage using the ensemble of models with weighted contributions."""
-    if not MODELS_LOADED:
-        raise ValueError("Models not loaded")
-
-    # Preprocess images for models
-    if is_facade:
-        inception_preprocessed = tf.image.resize(image, (299, 299))
-        inception_preprocessed = tf.cast(inception_preprocessed, tf.float32) / 255.0
-        inception_preprocessed = tf.expand_dims(inception_preprocessed, axis=0)
-    else:
-        inception_preprocessed = tf.image.resize(image, (224, 224))
-        inception_preprocessed = tf.cast(inception_preprocessed, tf.float32) / 255.0
-        inception_preprocessed = tf.expand_dims(inception_preprocessed, axis=0)
-
-    mobilenet_preprocessed = tf.image.resize(image, (224, 224))
-    mobilenet_preprocessed = tf.cast(mobilenet_preprocessed, tf.float32) / 255.0
-    mobilenet_preprocessed = tf.expand_dims(mobilenet_preprocessed, axis=0)
-
-    vgg_preprocessed = tf.image.resize(image, (224, 224))
-    vgg_preprocessed = tf.cast(vgg_preprocessed, tf.float32) / 255.0
-    vgg_preprocessed = tf.expand_dims(vgg_preprocessed, axis=0)
-
-    # Get predictions from each model
-    mobilenet_output = global_mobilenet.predict(mobilenet_preprocessed, verbose=0)[0]
-    inception_output = global_inception.predict(inception_preprocessed, verbose=0)[0]
-    vgg_output = global_vgg.predict(vgg_preprocessed, verbose=0)[0]
-
-    # Combine predictions using weighted average
-    ensemble_output = (
-        0.3 * mobilenet_output +  # 30% weight to MobileNet
-        0.4 * inception_output +  # 40% weight to Inception
-        0.3 * vgg_output          # 30% weight to VGG
-    )
-    
-    # Get the predicted stage and confidence
-    predicted_stage_index = np.argmax(ensemble_output)
-    confidence_score = float(ensemble_output[predicted_stage_index] * 100)
-
-    stage_list = list(stages.keys())
-    predicted_stage = stage_list[predicted_stage_index]
-
-    return predicted_stage, confidence_score
-
-def classify_stage(image, selected_stage):
-    """Perform stage-specific classification."""
-    if not MODELS_LOADED or selected_stage not in stage_specific_models:
-        raise ValueError("Models not loaded or invalid stage")
-
-    # Preprocess image for stage-specific model
-    if selected_stage == "facade":
-        preprocessed = tf.image.resize(image, (299, 299))
-    else:
-        preprocessed = tf.image.resize(image, (224, 224))
-
-    preprocessed = tf.cast(preprocessed, tf.float32) / 255.0
-    preprocessed = tf.expand_dims(preprocessed, axis=0)
-
-    # Get prediction from stage-specific model
-    model = stage_specific_models[selected_stage]
-    predictions = model.predict(preprocessed, verbose=0)[0]
-    
-    # Get the predicted sub-stage and confidence
-    predicted_index = np.argmax(predictions)
-    confidence = float(predictions[predicted_index] * 100)
-    
-    sub_stages = stages[selected_stage]
-    predicted_sub_stage = sub_stages[predicted_index]
-
-    return predicted_sub_stage, confidence
 
 @app.route('/validate', methods=['POST'])
 def validate_image():
