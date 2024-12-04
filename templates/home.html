@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Construction Stage Classification</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
+    <style>
+        /* CSS to optimize image preview size */
+        #imagePreview {
+            display: none; /* Initially hidden */
+            max-width: 400px; /* Set a maximum width */
+            max-height: 300px; /* Set a maximum height */
+            width: auto; /* Maintain aspect ratio */
+            height: auto; /* Maintain aspect ratio */
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Construction Stage Classification</h1>
+        <p>Upload a construction site image, select the stage, and validate if the image matches the stage.</p>
+        
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="mb-3">
+                <label for="image" class="form-label">Upload Image</label>
+                <input type="file" class="form-control" id="image" name="image" accept="image/*" required>
+            </div>
+            <div class="mb-3">
+                <label for="stage" class="form-label">Select Construction Stage</label>
+                <select class="form-select form-select-lg mb-3" id="stage" name="stage" required>
+                    <option value="" disabled selected>Choose a construction stage...</option>
+                    <option value="foundation">Foundation</option>
+                    <option value="superstructure">Superstructure</option>
+                    <option value="facade">Facade</option>
+                    <option value="Interior">Interior</option>
+                    <option value="finishing works">Finishing Works</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <img id="imagePreview" src="" alt="Image Preview" />
+            </div>
+            <div class="form-check mb-3">
+                <input type="checkbox" class="form-check-input" id="proceed" name="proceed" value="true">
+                <label class="form-check-label" for="proceed">Proceed if mismatch</label>
+            </div>
+            <div class="form-check mb-3">
+                <input type="checkbox" class="form-check-input" id="describe" name="describe" value="true">
+                <label class="form-check-label" for="describe">Generate Image Description</label>
+            </div>
+            <button type="submit" class="btn btn-primary">Validate Image</button>
+        </form>
+        <hr>
+        <div id="output" class="mt-3">
+            <h3>Results:</h3>
+            <div id="validationResult" class="alert alert-info">N/A</div>
+            <div class="mt-3">
+                <h4>Image Description:</h4>
+                <div id="descriptionResult" class="alert alert-info">
+                    <span class="description-text">N/A</span>
+                    <div class="rate-limit-message d-none text-danger">
+                        <hr>
+                        <strong>Note:</strong> Image description is temporarily unavailable due to API rate limits. 
+                        Please try again in about an hour.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            $('#image').on('change', function (event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        $('#imagePreview').attr('src', e.target.result).show();
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    $('#imagePreview').hide();
+                }
+            });
+
+            $('#uploadForm').on('submit', function (event) {
+                event.preventDefault();
+                
+                const formData = new FormData(this);
+                
+                // Explicitly set checkbox values
+                formData.set('proceed', $('#proceed').is(':checked'));
+                formData.set('describe', $('#describe').is(':checked'));
+                
+                // Reset results and show loading state
+                $('#validationResult')
+                    .removeClass('alert-danger alert-success')
+                    .addClass('alert-info')
+                    .text('Processing...');
+                
+                $('#descriptionResult')
+                    .removeClass('alert-danger alert-success')
+                    .addClass('alert-info')
+                    .find('.description-text')
+                    .text('Processing...');
+                
+                $('#descriptionResult .rate-limit-message').addClass('d-none');
+
+                $.ajax({
+                    url: '/validate',
+                    type: 'POST',
+                    data: formData,
+                    contentType: false,
+                    processData: false,
+                    success: function (response) {
+                        // Handle validation result
+                        $('#validationResult')
+                            .removeClass('alert-info alert-danger')
+                            .addClass(response.status === 'success' ? 'alert-success' : 'alert-warning')
+                            .text(response.validation);
+
+                        // Handle description
+                        const descriptionDiv = $('#descriptionResult');
+                        const descriptionText = descriptionDiv.find('.description-text');
+                        const rateLimitMessage = descriptionDiv.find('.rate-limit-message');
+                        
+                        descriptionDiv.removeClass('alert-info alert-danger alert-success alert-warning');
+                        
+                        if (!$('#describe').is(':checked')) {
+                            descriptionDiv.addClass('alert-info');
+                            descriptionText.text('Image description not requested');
+                            rateLimitMessage.addClass('d-none');
+                            return;
+                        }
+                        
+                        if (response.description) {
+                            if (response.description_status === 'success') {
+                                descriptionDiv.addClass('alert-success');
+                                descriptionText.text(response.description);
+                                rateLimitMessage.addClass('d-none');
+                            } else if (response.description_status === 'error') {
+                                descriptionDiv.addClass('alert-warning');
+                                descriptionText.text(response.description);
+                                if (response.description.toLowerCase().includes('rate limit')) {
+                                    rateLimitMessage.removeClass('d-none');
+                                } else {
+                                    rateLimitMessage.addClass('d-none');
+                                }
+                            }
+                        } else {
+                            descriptionDiv.addClass('alert-info');
+                            descriptionText.text('No description available');
+                            rateLimitMessage.addClass('d-none');
+                        }
+                    },
+                    error: function (xhr) {
+                        const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : 'An unknown error occurred';
+                        $('#validationResult')
+                            .removeClass('alert-info alert-success')
+                            .addClass('alert-danger')
+                            .text('Error: ' + errorMsg);
+                        
+                        $('#descriptionResult')
+                            .removeClass('alert-info alert-success')
+                            .addClass('alert-danger')
+                            .find('.description-text')
+                            .text('Description unavailable due to error');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

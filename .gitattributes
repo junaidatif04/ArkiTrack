@@ -1,0 +1,5 @@
+*.keras filter=lfs diff=lfs merge=lfs -text
+models/Facade_inception.keras filter=lfs diff=lfs merge=lfs -text
+models/Superstructure_vgg16.keras filter=lfs diff=lfs merge=lfs -text
+models/inception.keras filter=lfs diff=lfs merge=lfs -text
+models/vgg16.keras filter=lfs diff=lfs merge=lfs -text
