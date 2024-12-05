@@ -5,6 +5,8 @@ import numpy as np
 from PIL import Image
 import google.generativeai as genai
 from dotenv import load_dotenv
+from firebase_admin import credentials, firestore
+import firebase_admin
 
 # Load environment variables
 load_dotenv()
@@ -22,6 +24,12 @@ API_KEY = os.getenv('GOOGLE_API_KEY')
 if not API_KEY:
     raise ValueError("GOOGLE_API_KEY environment variable not set")
 genai.configure(api_key=API_KEY)
+
+# Initialize Firebase Admin
+FIREBASE_CRED_PATH ="C:/Users/Skynet/OneDrive/Desktop/fanatic/main_git/config/fnatic-2cba7-firebase-adminsdk-ccao3-c65eb4de07.json"
+cred = credentials.Certificate(FIREBASE_CRED_PATH)
+firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 # Initialize variables for models
 global_mobilenet = None
@@ -274,7 +282,7 @@ def validate_image():
             if predicted_stage != selected_stage and not proceed:
                 return jsonify({
                     'validation': f"Mismatch detected! Global classifier predicts stage '{predicted_stage}' "
-                              f"with confidence {global_confidence:.2f}%, but selected stage is '{selected_stage}'.",
+                                  f"with confidence {global_confidence:.2f}%, but selected stage is '{selected_stage}'.",
                     'description': '',
                     'description_status': 'not_requested',
                     'status': 'mismatch'
@@ -284,7 +292,7 @@ def validate_image():
             predicted_class, stage_confidence = classify_stage(image_array, selected_stage)
             result = {
                 'validation': f"The image matches the selected stage '{selected_stage}'. Predicted: '{predicted_class}' "
-                          f"with confidence {stage_confidence:.2f}%.",
+                              f"with confidence {stage_confidence:.2f}%.",
                 'status': 'success',
                 'description': '',
                 'description_status': 'not_requested'
@@ -296,7 +304,19 @@ def validate_image():
                     'description': description,
                     'description_status': 'success' if 'error' not in description.lower() else 'error'
                 })
-            
+
+            # Save data to Firestore
+            doc_ref = db.collection('validations').document()
+            doc_ref.set({
+                'file_path': filepath,
+                'predicted_stage': predicted_stage,
+                'global_confidence': global_confidence,
+                'predicted_class': predicted_class,
+                'stage_confidence': stage_confidence,
+                'selected_stage': selected_stage,
+                'description': description if describe else None,
+            })
+
             return jsonify(result)
 
         except Exception as e:
@@ -317,18 +337,12 @@ def validate_image():
             'description_status': 'error'
         }), 500
 
-
-def test_model_loading():
-    load_models()
-    if global_mobilenet is None or global_inception is None or global_vgg is None:
-        print("One or more models failed to load.")
-    else:
-        print("All models loaded successfully.")
-
-# Call this function during app startup
-test_model_loading()
-
-if __name__ == '__main__':
-    # Create uploads directory if it doesn't exist
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    app.run(debug=True)
+@app.route('/get_validations', methods=['GET'])
+def get_validations():
+    """Retrieve all validations from Firestore."""
+    try:
+        docs = db.collection('validations').stream()
+        validations = [doc.to_dict() for doc in docs]
+        return jsonify({'validations': validations, 'status': 'success'}), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to retrieve validations: {str(e)}', 'status': 'error'}), 500
