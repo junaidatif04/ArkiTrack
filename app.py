@@ -26,7 +26,7 @@ if not API_KEY:
 genai.configure(api_key=API_KEY)
 
 # Initialize Firebase Admin
-FIREBASE_CRED_PATH ="C:/Users/Skynet/OneDrive/Desktop/fanatic/main_git/config/fnatic-2cba7-firebase-adminsdk-ccao3-c65eb4de07.json"
+FIREBASE_CRED_PATH = os.path.join(os.getcwd(), "config", "fnatic-2cba7-firebase-adminsdk-ccao3-c65eb4de07.json")
 cred = credentials.Certificate(FIREBASE_CRED_PATH)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
@@ -50,7 +50,7 @@ def load_models():
         # Load stage-specific models
         stage_specific_models = {
             "foundation": tf.keras.models.load_model("models/Foundation_mobile.keras", compile=False),
-            "superstructure": tf.keras.models.load_model("models/Superstructure_vgg16.keras", compile=False),
+            "superstructure": tf.keras.models.load_model("models/Superstructure_mobile.keras", compile=False),
             "facade": tf.keras.models.load_model("models/Facade_inception.keras", compile=False),
             "Interior": tf.keras.models.load_model("models/Interior_mobile.keras", compile=False),
             "finishing works": tf.keras.models.load_model("models/finishing_mobile.keras", compile=False)
@@ -346,3 +346,6 @@ def get_validations():
         return jsonify({'validations': validations, 'status': 'success'}), 200
     except Exception as e:
         return jsonify({'error': f'Failed to retrieve validations: {str(e)}', 'status': 'error'}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
