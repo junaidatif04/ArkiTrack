@@ -55,6 +55,7 @@
             <h3>Results:</h3>
             <div id="validationResult" class="alert alert-info">N/A</div>
             <button id="compareButton" class="btn btn-secondary mt-2" style="display: none;">Compare with Previous</button>
+            <button id="generateReportBtn" class="btn btn-primary mt-2" style="display: none;">Generate Report</button>
             <div class="mt-3">
                 <h4>Image Description:</h4>
                 <div id="descriptionResult" class="alert alert-info">
@@ -167,11 +168,22 @@
                                     .removeClass('alert-info alert-danger')
                                     .addClass('alert-success')
                                     .html(response.message);
+                                    
+                                // Show generate report button and set up click handler
+                                $('#generateReportBtn')
+                                    .show()
+                                    .off('click')
+                                    .on('click', function() {
+                                        window.location.href = `/generate_report/${response.validation_id}`;
+                                    });
                             } else {
                                 $('#validationResult')
                                     .removeClass('alert-info alert-success')
                                     .addClass('alert-danger')
                                     .html(response.message);
+                                    
+                                // Hide generate report button for failed validations
+                                $('#generateReportBtn').hide();
                             }
 
                             if (response.description) {
@@ -188,6 +200,7 @@
                                 .addClass('alert-danger')
                                 .text('Error: ' + xhr.responseText);
                             
+
                             if (xhr.status === 429) {
                                 $('#descriptionResult .rate-limit-message').removeClass('d-none');
                             }

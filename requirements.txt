@@ -7,6 +7,7 @@ numpy>=1.24.3
 google-generativeai==0.3.1
 firebase-admin
 pytz
+reportlab==4.1.0
 
 flask
 tensorflow

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import os
 import tensorflow as tf
 import numpy as np
@@ -11,6 +11,11 @@ import time
 import pytz
 from datetime import datetime
 from werkzeug.utils import secure_filename
+import tempfile
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 load_dotenv()
 
@@ -271,11 +276,16 @@ def validate_image():
             doc_ref = db.collection('validations').document()
             validation_data = {
                 'timestamp': firestore.SERVER_TIMESTAMP,
-                'image_url': f'/static/uploads/{filename}',
-                'stage': selected_stage,
-                'sub_stage': predicted_class,
-                'confidence': stage_confidence,
-                'description': description if describe else None
+                'image_path': os.path.join(app.config['UPLOAD_FOLDER'], filename),
+                'primary_stage': selected_stage,
+                'specific_classification': predicted_class,
+                'confidence_scores': {
+                    'Stage Confidence': f"{stage_confidence:.2f}",
+                    'Global Confidence': f"{global_confidence:.2f}"
+                },
+                'description_requested': describe,
+                'ai_description': description if describe else "Description not generated",
+                'status': 'success'
             }
             doc_ref.set(validation_data)
 
@@ -473,51 +483,59 @@ def compare_progress():
     if not previous_doc_id or not current_doc_id:
         return jsonify({'error': 'Missing required parameters: previous_doc_id, current_doc_id'}), 400
 
-    # Fetch previous record
-    prev_doc_ref = db.collection('validations').document(previous_doc_id)
-    prev_doc = prev_doc_ref.get()
-    if not prev_doc.exists:
-        return jsonify({'error': 'Previous document not found'}), 404
-    prev_data = prev_doc.to_dict()
+    try:
+        # Fetch previous record
+        prev_doc_ref = db.collection('validations').document(previous_doc_id)
+        prev_doc = prev_doc_ref.get()
+        if not prev_doc.exists:
+            return jsonify({'error': 'Previous document not found'}), 404
+        prev_data = prev_doc.to_dict()
 
-    # Fetch current record
-    curr_doc_ref = db.collection('validations').document(current_doc_id)
-    curr_doc = curr_doc_ref.get()
-    if not curr_doc.exists:
-        return jsonify({'error': 'Current document not found'}), 404
-    curr_data = curr_doc.to_dict()
+        # Fetch current record
+        curr_doc_ref = db.collection('validations').document(current_doc_id)
+        curr_doc = curr_doc_ref.get()
+        if not curr_doc.exists:
+            return jsonify({'error': 'Current document not found'}), 404
+        curr_data = curr_doc.to_dict()
 
-    prev_stage = prev_data.get('stage')
-    prev_sub_stage = prev_data.get('sub_stage')
-    prev_image_url = prev_data.get('image_url', '')
+        # Get stage information using new field names
+        prev_stage = prev_data.get('primary_stage')
+        prev_sub_stage = prev_data.get('specific_classification')
+        prev_image_path = prev_data.get('image_path', '')
 
-    curr_stage = curr_data.get('stage')
-    curr_sub_stage = curr_data.get('sub_stage')
-    curr_image_url = curr_data.get('image_url', '')
+        curr_stage = curr_data.get('primary_stage')
+        curr_sub_stage = curr_data.get('specific_classification')
+        curr_image_path = curr_data.get('image_path', '')
 
-    progress_status, progress_message = get_progress_message(
-        prev_stage, prev_sub_stage, curr_stage, curr_sub_stage
-    )
+        # Convert image paths to URLs
+        prev_image_url = '/' + prev_image_path if prev_image_path else ''
+        curr_image_url = '/' + curr_image_path if curr_image_path else ''
 
-    curr_stage_progress, curr_overall_progress, curr_completed = calculate_progress(curr_stage, curr_sub_stage)
+        progress_status, progress_message = get_progress_message(
+            prev_stage, prev_sub_stage, curr_stage, curr_sub_stage
+        )
 
-    return jsonify({
-        'progress': progress_status,
-        'message': progress_message,
-        'previous': {
-            'stage': prev_stage,
-            'sub_stage': prev_sub_stage,
-            'image_url': prev_image_url
-        },
-        'current': {
-            'stage': curr_stage,
-            'sub_stage': curr_sub_stage,
-            'image_url': curr_image_url,
-            'stage_progress': curr_stage_progress,
-            'overall_progress': curr_overall_progress,
-            'completed_stages': curr_completed
-        }
-    }), 200
+        curr_stage_progress, curr_overall_progress, curr_completed = calculate_progress(curr_stage, curr_sub_stage)
+
+        return jsonify({
+            'progress': progress_status,
+            'message': progress_message,
+            'previous': {
+                'stage': prev_stage,
+                'sub_stage': prev_sub_stage,
+                'image_url': prev_image_url
+            },
+            'current': {
+                'stage': curr_stage,
+                'sub_stage': curr_sub_stage,
+                'image_url': curr_image_url,
+                'stage_progress': curr_stage_progress,
+                'overall_progress': curr_overall_progress,
+                'completed_stages': curr_completed
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/get_validations', methods=['GET'])
 def get_validations():
@@ -529,13 +547,87 @@ def get_validations():
             validations.append({
                 'id': doc.id,
                 'timestamp': data.get('timestamp', ''),
-                'stage': data.get('stage', ''),
-                'sub_stage': data.get('sub_stage', '')
+                'stage': data.get('primary_stage', ''),
+                'sub_stage': data.get('specific_classification', '')
             })
         
         return jsonify({'validations': validations}), 200
     except Exception as e:
         return jsonify({'error': f'Failed to retrieve validations: {str(e)}'}), 500
+
+@app.route('/generate_report/<validation_id>', methods=['GET'])
+def generate_report(validation_id):
+    try:
+        # Get validation data from Firestore
+        doc_ref = db.collection('validations').document(validation_id)
+        validation = doc_ref.get()
+        
+        if not validation.exists:
+            return jsonify({'error': 'Validation not found'}), 404
+            
+        validation_data = validation.to_dict()
+        
+        # Create a temporary file for the PDF
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+            # Create the PDF document
+            doc = SimpleDocTemplate(tmp.name, pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = []
+            
+            # Title
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=24,
+                spaceAfter=30
+            )
+            story.append(Paragraph('Construction Stage Analysis Report', title_style))
+            story.append(Spacer(1, 12))
+            
+            # Date
+            story.append(Paragraph(f'Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', styles['Normal']))
+            story.append(Spacer(1, 12))
+            
+            # Add image if it exists
+            image_path = validation_data.get('image_path', '')
+            if os.path.exists(image_path):
+                img = RLImage(image_path, width=400, height=300)
+                story.append(img)
+                story.append(Spacer(1, 12))
+            
+            # Analysis Results
+            story.append(Paragraph('Stage Analysis Results', styles['Heading2']))
+            story.append(Paragraph(f'Primary Stage: {validation_data.get("primary_stage", "N/A")}', styles['Normal']))
+            story.append(Paragraph(f'Stage-Specific Classification: {validation_data.get("specific_classification", "N/A")}', styles['Normal']))
+            story.append(Spacer(1, 12))
+            
+            # AI Description
+            story.append(Paragraph('AI Description', styles['Heading2']))
+            description = validation_data.get('ai_description', 'Description not generated')
+            if not validation_data.get('description_requested', False):
+                description = 'Description not generated'
+            story.append(Paragraph(description, styles['Normal']))
+            story.append(Spacer(1, 12))
+            
+            # Confidence Scores
+            story.append(Paragraph('Confidence Scores', styles['Heading2']))
+            confidence_scores = validation_data.get('confidence_scores', {})
+            for model, score in confidence_scores.items():
+                story.append(Paragraph(f'{model}: {score}%', styles['Normal']))
+            
+            # Build the PDF
+            doc.build(story)
+            
+            # Return the PDF file
+            return send_file(
+                tmp.name,
+                mimetype='application/pdf',
+                as_attachment=True,
+                download_name=f'construction_report_{validation_id}.pdf'
+            )
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
