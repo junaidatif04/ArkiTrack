@@ -54,6 +54,7 @@
         <div id="output" class="mt-3">
             <h3>Results:</h3>
             <div id="validationResult" class="alert alert-info">N/A</div>
+            <button id="compareButton" class="btn btn-secondary mt-2" style="display: none;">Compare with Previous</button>
             <div class="mt-3">
                 <h4>Image Description:</h4>
                 <div id="descriptionResult" class="alert alert-info">
@@ -67,7 +68,45 @@
             </div>
         </div>
     </div>
+
+    <!-- Comparison Modal -->
+    <div class="modal fade" id="comparisonModal" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Compare Progress</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="previousValidationSelect">Select Previous Validation:</label>
+                        <select class="form-control" id="previousValidationSelect">
+                            <option value="">Select a validation...</option>
+                        </select>
+                    </div>
+                    <div class="text-center mb-3">
+                        <button id="compareProgressBtn" class="btn btn-primary" style="display: none;">
+                            Compare Progress
+                        </button>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Previous Validation</h6>
+                            <div id="previousValidationDetails"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Current Validation</h6>
+                            <div id="currentValidationDetails"></div>
+                        </div>
+                    </div>
+                    <div id="comparisonResult" class="alert mt-4" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script>
         $(document).ready(function () {
             $('#image').on('change', function (event) {
@@ -86,87 +125,159 @@
             $('#uploadForm').on('submit', function (event) {
                 event.preventDefault();
                 
-                const formData = new FormData(this);
+                var formData = new FormData();
+                var fileInput = $('#image')[0];
                 
-                // Explicitly set checkbox values
-                formData.set('proceed', $('#proceed').is(':checked'));
-                formData.set('describe', $('#describe').is(':checked'));
-                
-                // Reset results and show loading state
-                $('#validationResult')
-                    .removeClass('alert-danger alert-success')
-                    .addClass('alert-info')
-                    .text('Processing...');
-                
-                $('#descriptionResult')
-                    .removeClass('alert-danger alert-success')
-                    .addClass('alert-info')
-                    .find('.description-text')
-                    .text('Processing...');
-                
-                $('#descriptionResult .rate-limit-message').addClass('d-none');
+                if (fileInput.files.length > 0) {
+                    formData.append('file', fileInput.files[0]);
+                    
+                    // Explicitly set checkbox values
+                    formData.set('proceed', $('#proceed').is(':checked'));
+                    formData.set('describe', $('#describe').is(':checked'));
+                    formData.set('stage', $('#stage').val());
+                    
+                    // Reset results and show loading state
+                    $('#validationResult')
+                        .removeClass('alert-danger alert-success')
+                        .addClass('alert-info')
+                        .text('Processing...');
+                    
+                    $('#descriptionResult')
+                        .removeClass('alert-danger alert-success')
+                        .addClass('alert-info')
+                        .find('.description-text')
+                        .text('Processing...');
+                    
+                    $('#descriptionResult .rate-limit-message').addClass('d-none');
 
-                $.ajax({
-                    url: '/validate',
-                    type: 'POST',
-                    data: formData,
-                    contentType: false,
-                    processData: false,
-                    success: function (response) {
-                        // Handle validation result
-                        $('#validationResult')
-                            .removeClass('alert-info alert-danger')
-                            .addClass(response.status === 'success' ? 'alert-success' : 'alert-warning')
-                            .text(response.validation);
-
-                        // Handle description
-                        const descriptionDiv = $('#descriptionResult');
-                        const descriptionText = descriptionDiv.find('.description-text');
-                        const rateLimitMessage = descriptionDiv.find('.rate-limit-message');
-                        
-                        descriptionDiv.removeClass('alert-info alert-danger alert-success alert-warning');
-                        
-                        if (!$('#describe').is(':checked')) {
-                            descriptionDiv.addClass('alert-info');
-                            descriptionText.text('Image description not requested');
-                            rateLimitMessage.addClass('d-none');
-                            return;
-                        }
-                        
-                        if (response.description) {
-                            if (response.description_status === 'success') {
-                                descriptionDiv.addClass('alert-success');
-                                descriptionText.text(response.description);
-                                rateLimitMessage.addClass('d-none');
-                            } else if (response.description_status === 'error') {
-                                descriptionDiv.addClass('alert-warning');
-                                descriptionText.text(response.description);
-                                if (response.description.toLowerCase().includes('rate limit')) {
-                                    rateLimitMessage.removeClass('d-none');
-                                } else {
-                                    rateLimitMessage.addClass('d-none');
-                                }
+                    $.ajax({
+                        url: '/validate_image',
+                        type: 'POST',
+                        data: formData,
+                        processData: false,
+                        contentType: false,
+                        success: function(response) {
+                            // Show comparison button only after successful validation
+                            $('#compareButton').show();
+                            // Store the current validation ID for comparison
+                            window.currentValidationId = response.validation_id;
+                            
+                            if (response.success) {
+                                $('#validationResult')
+                                    .removeClass('alert-info alert-danger')
+                                    .addClass('alert-success')
+                                    .html(response.message);
+                            } else {
+                                $('#validationResult')
+                                    .removeClass('alert-info alert-success')
+                                    .addClass('alert-danger')
+                                    .html(response.message);
                             }
-                        } else {
-                            descriptionDiv.addClass('alert-info');
-                            descriptionText.text('No description available');
-                            rateLimitMessage.addClass('d-none');
+
+                            if (response.description) {
+                                $('#descriptionResult')
+                                    .removeClass('alert-info alert-danger')
+                                    .addClass('alert-success')
+                                    .find('.description-text')
+                                    .text(response.description);
+                            }
+                        },
+                        error: function(xhr) {
+                            $('#validationResult')
+                                .removeClass('alert-info alert-success')
+                                .addClass('alert-danger')
+                                .text('Error: ' + xhr.responseText);
+                            
+                            if (xhr.status === 429) {
+                                $('#descriptionResult .rate-limit-message').removeClass('d-none');
+                            }
                         }
-                    },
-                    error: function (xhr) {
-                        const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : 'An unknown error occurred';
-                        $('#validationResult')
-                            .removeClass('alert-info alert-success')
+                    });
+                }
+            });
+
+            // Handle compare button click
+            $('#compareButton').click(function() {
+                // Load previous validations
+                $.get('/get_validations', function(response) {
+                    const select = $('#previousValidationSelect');
+                    select.empty();
+                    select.append('<option value="">Select a validation...</option>');
+                    
+                    response.validations.forEach(function(validation) {
+                        select.append(`<option value="${validation.id}">${validation.timestamp} - ${validation.stage}</option>`);
+                    });
+                    
+                    new bootstrap.Modal('#comparisonModal').show();
+                });
+            });
+
+            // Handle previous validation selection
+            $('#previousValidationSelect').change(function() {
+                const previousId = $(this).val();
+                if (previousId) {
+                    $('#compareProgressBtn').show();
+                } else {
+                    $('#compareProgressBtn').hide();
+                }
+            });
+
+            // Handle compare button click
+            $('#compareProgressBtn').click(function() {
+                const previousId = $('#previousValidationSelect').val();
+                if (!previousId) return;
+
+                // Reset previous comparison result
+                $('#comparisonResult').hide();
+
+                $.post('/compare', {
+                    previous_doc_id: previousId,
+                    current_doc_id: window.currentValidationId
+                }, function(response) {
+                    // First update the validation details
+                    $('#previousValidationDetails').html(`
+                        <div class="card">
+                            <div class="card-body">
+                                <p><strong>Stage:</strong> ${response.previous.stage}</p>
+                                <p><strong>Sub-stage:</strong> ${response.previous.sub_stage}</p>
+                                <img src="${response.previous.image_url}" class="img-fluid">
+                            </div>
+                        </div>
+                    `);
+
+                    $('#currentValidationDetails').html(`
+                        <div class="card">
+                            <div class="card-body">
+                                <p><strong>Stage:</strong> ${response.current.stage}</p>
+                                <p><strong>Sub-stage:</strong> ${response.current.sub_stage}</p>
+                                <img src="${response.current.image_url}" class="img-fluid">
+                            </div>
+                        </div>
+                    `);
+
+                    // Then show the comparison result
+                    const result = $('#comparisonResult');
+                    result.show();
+                    
+                    if (response.progress === 'advanced') {
+                        result.removeClass('alert-danger alert-warning')
+                            .addClass('alert-success')
+                            .html(response.message.replace(/\n/g, '<br>'));
+                    } else if (response.progress === 'same') {
+                        result.removeClass('alert-danger alert-success')
+                            .addClass('alert-warning')
+                            .html(response.message.replace(/\n/g, '<br>'));
+                    } else {
+                        result.removeClass('alert-success alert-warning')
                             .addClass('alert-danger')
-                            .text('Error: ' + errorMsg);
-                        
-                        $('#descriptionResult')
-                            .removeClass('alert-info alert-success')
-                            .addClass('alert-danger')
-                            .find('.description-text')
-                            .text('Description unavailable due to error');
+                            .html(response.message.replace(/\n/g, '<br>'));
                     }
                 });
+            });
+
+            // Handle modal close button
+            $('#comparisonModal .btn-close').click(function() {
+                $('#comparisonModal').modal('hide');
             });
         });
     </script>
