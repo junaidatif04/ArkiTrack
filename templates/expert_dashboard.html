@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Expert Dashboard{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Expert Dashboard</h2>
+        </div>
+        <div class="col text-end">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createProjectModal">
+                Create New Project
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">My Projects</h5>
+                </div>
+                <div class="card-body">
+                    {% if projects %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Location</th>
+                                        <th>Current Stage</th>
+                                        <th>Start Date</th>
+                                        <th>End Date</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for project in projects %}
+                                    <tr>
+                                        <td>{{ project.name }}</td>
+                                        <td>{{ project.location }}</td>
+                                        <td>
+                                            {{ project.current_stage }}
+                                            {% if project.current_sub_stage %}
+                                            <br><small class="text-muted">{{ project.current_sub_stage }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ project.start_date }}</td>
+                                        <td>{{ project.end_date }}</td>
+                                        <td>
+                                            <span class="badge bg-{{ 'success' if project.status == 'active' else 'secondary' }}">
+                                                {{ project.status|title }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <a href="{{ url_for('home', project_id=project.id) }}" class="btn btn-sm btn-primary">View</a>
+                                            <a href="{{ url_for('validate_project_images', project_id=project.id) }}" class="btn btn-sm btn-info">Validate</a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-center">No projects found. Create a new project to get started.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Project Modal -->
+<div class="modal fade" id="createProjectModal" tabindex="-1" aria-labelledby="createProjectModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createProjectModalLabel">Create New Project</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="createProjectForm" method="POST" action="{{ url_for('create_project') }}">
+                <div class="modal-body">
+                    <input type="hidden" name="user_id" value="{{ user_id }}">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Project Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="3" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="location" class="form-label">Location</label>
+                        <input type="text" class="form-control" id="location" name="location" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="start_date" class="form-label">Start Date</label>
+                        <input type="date" class="form-control" id="start_date" name="start_date" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="end_date" class="form-label">Expected End Date</label>
+                        <input type="date" class="form-control" id="end_date" name="end_date" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="latitude" class="form-label">Latitude</label>
+                            <input type="number" step="any" class="form-control" id="latitude" name="latitude" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="longitude" class="form-label">Longitude</label>
+                            <input type="number" step="any" class="form-control" id="longitude" name="longitude" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Select Location on Map</label>
+                        <div id="map" style="height: 300px;"></div>
+                    </div>
+                    <div class="alert alert-danger" id="createProjectError" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="submitCreateProject()">Create Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+<script>
+// Set default dates
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('start_date').value = today;
+    
+    const nextMonth = new Date();
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    document.getElementById('end_date').value = nextMonth.toISOString().split('T')[0];
+});
+
+async function submitCreateProject() {
+    const form = document.getElementById('createProjectForm');
+    const errorDiv = document.getElementById('createProjectError');
+    const formData = new FormData(form);
+
+    try {
+        const response = await fetch(form.action, {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            // Close modal and refresh page
+            const modal = bootstrap.Modal.getInstance(document.getElementById('createProjectModal'));
+            modal.hide();
+            location.reload();
+        } else {
+            errorDiv.textContent = result.error || 'Failed to create project';
+            errorDiv.style.display = 'block';
+        }
+    } catch (error) {
+        errorDiv.textContent = 'An error occurred while creating the project';
+        errorDiv.style.display = 'block';
+    }
+}
+
+// Initialize map
+let projectMap;
+let projectMarker;
+
+document.getElementById('createProjectModal').addEventListener('shown.bs.modal', function () {
+    if (!projectMap) {
+        projectMap = L.map('map').setView([20.5937, 78.9629], 5); // Default center on India
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: 'OpenStreetMap contributors'
+        }).addTo(projectMap);
+
+        // Handle map clicks
+        projectMap.on('click', function(e) {
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+            
+            // Update form inputs
+            document.getElementById('latitude').value = lat.toFixed(6);
+            document.getElementById('longitude').value = lng.toFixed(6);
+            
+            // Update or create marker
+            if (projectMarker) {
+                projectMarker.setLatLng([lat, lng]);
+            } else {
+                projectMarker = L.marker([lat, lng]).addTo(projectMap);
+            }
+        });
+    }
+    // Force map to recalculate its size as it's inside a modal
+    setTimeout(() => projectMap.invalidateSize(), 200);
+});
+
+// Handle manual input changes
+document.getElementById('latitude').addEventListener('change', updateProjectMarker);
+document.getElementById('longitude').addEventListener('change', updateProjectMarker);
+        
+function updateProjectMarker() {
+    const lat = parseFloat(document.getElementById('latitude').value);
+    const lng = parseFloat(document.getElementById('longitude').value);
+    
+    if (!isNaN(lat) && !isNaN(lng)) {
+        if (projectMarker) {
+            projectMarker.setLatLng([lat, lng]);
+        } else {
+            projectMarker = L.marker([lat, lng]).addTo(projectMap);
+        }
+        projectMap.setView([lat, lng], 15);
+    }
+}
+</script>
+{% endblock %}

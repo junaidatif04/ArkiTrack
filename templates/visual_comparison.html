@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Visual Analyzer</h2>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title text-primary">Previous Image</h5>
+                    <div class="mb-3">
+                        <input type="file" class="form-control" id="prevImage" accept="image/*">
+                    </div>
+                    <div class="image-preview" id="prevImagePreview">
+                        <div class="preview-placeholder">Select an image</div>
+                        <img src="" alt="Previous Image Preview" style="max-width: 100%; display: none;">
+                        <div class="invalid-feedback"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title text-primary">Current Image</h5>
+                    <div class="mb-3">
+                        <input type="file" class="form-control" id="currImage" accept="image/*">
+                    </div>
+                    <div class="image-preview" id="currImagePreview">
+                        <div class="preview-placeholder">Select an image</div>
+                        <img src="" alt="Current Image Preview" style="max-width: 100%; display: none;">
+                        <div class="invalid-feedback"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-12 text-center">
+            <button class="btn btn-primary px-4" id="compareBtn" disabled>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                <span class="button-text">Analyze Changes</span>
+            </button>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title text-primary">Analysis Result</h5>
+                    <div class="analysis-preview" id="resultImagePreview">
+                        <div class="text-center text-muted" id="resultPlaceholder">Analysis result will appear here</div>
+                        <img src="" alt="Analysis Result" style="max-width: 100%; display: none;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.card {
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    background: white;
+    border: 1px solid #e0e0e0;
+    margin-bottom: 1rem;
+}
+
+.card-title {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.image-preview, .analysis-preview {
+    min-height: 200px;
+    border: 1px dashed #ccc;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8f9fa;
+    padding: 1rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.preview-placeholder {
+    color: #666;
+    text-align: center;
+}
+
+.image-preview img, .analysis-preview img {
+    max-width: 100%;
+    max-height: 300px;
+    object-fit: contain;
+}
+
+.btn-primary {
+    background-color: #4285f4;
+    border-color: #4285f4;
+    padding: 0.5rem 2rem;
+    font-size: 1rem;
+    position: relative;
+}
+
+.btn-primary:hover {
+    background-color: #357abd;
+    border-color: #357abd;
+}
+
+.btn-primary:disabled {
+    background-color: #a4c2f4;
+    border-color: #a4c2f4;
+}
+
+.invalid-feedback {
+    display: none;
+    color: #dc3545;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(255,255,255,0.9);
+    padding: 0.25rem;
+    text-align: center;
+}
+
+#resultPlaceholder {
+    color: #666;
+}
+
+.spinner-border {
+    margin-right: 0.5rem;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const prevImageInput = document.getElementById('prevImage');
+    const currImageInput = document.getElementById('currImage');
+    const compareBtn = document.getElementById('compareBtn');
+    const prevImagePreview = document.querySelector('#prevImagePreview img');
+    const currImagePreview = document.querySelector('#currImagePreview img');
+    const resultImagePreview = document.querySelector('#resultImagePreview img');
+    const resultPlaceholder = document.getElementById('resultPlaceholder');
+    const spinner = document.querySelector('.spinner-border');
+    const buttonText = document.querySelector('.button-text');
+    
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/jpg'];
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    
+    function showError(element, message) {
+        const feedback = element.querySelector('.invalid-feedback');
+        feedback.textContent = message;
+        feedback.style.display = 'block';
+        element.querySelector('img').style.display = 'none';
+        element.querySelector('.preview-placeholder').style.display = 'block';
+    }
+    
+    function clearError(element) {
+        const feedback = element.querySelector('.invalid-feedback');
+        feedback.style.display = 'none';
+        element.querySelector('.preview-placeholder').style.display = 'none';
+    }
+    
+    function validateImage(file, previewElement) {
+        if (!file) {
+            showError(previewElement, 'Please select an image');
+            return false;
+        }
+        
+        if (!ALLOWED_TYPES.includes(file.type)) {
+            showError(previewElement, 'Only JPG and PNG images are allowed');
+            return false;
+        }
+        
+        if (file.size > MAX_SIZE) {
+            showError(previewElement, 'Image size should be less than 5MB');
+            return false;
+        }
+        
+        clearError(previewElement);
+        return true;
+    }
+    
+    function previewImage(input, previewElement) {
+        const file = input.files[0];
+        const imgElement = previewElement.querySelector('img');
+        
+        if (validateImage(file, previewElement)) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imgElement.src = e.target.result;
+                imgElement.style.display = 'block';
+            }
+            reader.readAsDataURL(file);
+        }
+        
+        updateCompareButton();
+    }
+    
+    function updateCompareButton() {
+        const prevFile = prevImageInput.files[0];
+        const currFile = currImageInput.files[0];
+        
+        compareBtn.disabled = !(
+            prevFile && currFile && 
+            validateImage(prevFile, prevImagePreview.parentElement) && 
+            validateImage(currFile, currImagePreview.parentElement)
+        );
+    }
+    
+    prevImageInput.addEventListener('change', function() {
+        previewImage(this, this.parentElement.nextElementSibling);
+    });
+    
+    currImageInput.addEventListener('change', function() {
+        previewImage(this, this.parentElement.nextElementSibling);
+    });
+    
+    compareBtn.addEventListener('click', async function() {
+        const formData = new FormData();
+        formData.append('prev_image', prevImageInput.files[0]);
+        formData.append('curr_image', currImageInput.files[0]);
+        
+        try {
+            compareBtn.disabled = true;
+            spinner.classList.remove('d-none');
+            buttonText.textContent = 'Analyzing...';
+            resultPlaceholder.textContent = 'Processing images...';
+            resultImagePreview.style.display = 'none';
+            
+            const response = await fetch('/visual_comparison', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                resultImagePreview.src = data.result_image;
+                resultImagePreview.style.display = 'block';
+                resultPlaceholder.style.display = 'none';
+            } else {
+                resultPlaceholder.textContent = 'Error: ' + data.error;
+                resultPlaceholder.style.display = 'block';
+                resultImagePreview.style.display = 'none';
+            }
+        } catch (error) {
+            resultPlaceholder.textContent = 'Error: ' + error.message;
+            resultPlaceholder.style.display = 'block';
+            resultImagePreview.style.display = 'none';
+        } finally {
+            compareBtn.disabled = false;
+            spinner.classList.add('d-none');
+            buttonText.textContent = 'Analyze Changes';
+        }
+    });
+});
+</script>
+{% endblock %}

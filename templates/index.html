@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - ArkitraCk{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-8 text-center">
+            <h1>Welcome to ArkitraCk</h1>
+            <p class="lead">Construction Project Progress Tracking System</p>
+            {% if session.get('user_id') %}
+                {% if session.get('user_role') == 'technical_expert' %}
+                    <a href="{{ url_for('expert_dashboard') }}" class="btn btn-primary btn-lg">Go to Expert Dashboard</a>
+                {% else %}
+                    <a href="{{ url_for('worker_dashboard') }}" class="btn btn-primary btn-lg">Go to Worker Dashboard</a>
+                {% endif %}
+            {% else %}
+                <div class="mt-4">
+                    <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg mx-2">Login</a>
+                    <a href="{{ url_for('signup') }}" class="btn btn-outline-primary btn-lg mx-2">Sign Up</a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

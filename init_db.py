@@ -13,53 +13,115 @@ def init_firestore():
         
         db = firestore.client()
         
-        # Create validations collection if it doesn't exist
+        # Create main collections
+        users_ref = db.collection('users')
+        projects_ref = db.collection('projects')
         validations_ref = db.collection('validations')
         
-        # Create a test document to ensure collection exists
-        test_doc = validations_ref.document('test_init')
-        test_doc.set({
-            'timestamp': firestore.SERVER_TIMESTAMP,
-            'image_url': '/static/uploads/test.jpg',
-            'stage': 'test',
-            'sub_stage': 'test',
-            'confidence': 0.0,
-            'description': 'Test document for initialization'
+        # Create a test document in users collection
+        test_user_doc = users_ref.document('test_user')
+        test_user_doc.set({
+            'email': 'test@example.com',
+            'display_name': 'Test User',
+            'role': 'worker',
+            'created_at': firestore.SERVER_TIMESTAMP,
+            'active_projects': []
         })
         
-        # Delete the test document
-        test_doc.delete()
+        # Create a test document in projects collection
+        test_project_doc = projects_ref.document('test_project')
+        test_project_doc.set({
+            'name': 'Sample Construction Project',
+            'location': 'Test City',
+            'start_date': firestore.SERVER_TIMESTAMP,
+            'expected_completion_date': None,
+            'current_stage': 'foundation',
+            'progress_percentage': 0,
+            'team_members': [],
+            'status': 'active'
+        })
         
-        # Create composite index for validations collection
-        # This index will support querying validations by timestamp
-        index = {
-            'collectionGroup': 'validations',
-            'queryScope': 'COLLECTION',
-            'fields': [
-                {
-                    'fieldPath': 'timestamp',
-                    'order': 'DESCENDING'
-                },
-                {
-                    'fieldPath': 'stage',
-                    'order': 'ASCENDING'
-                }
-            ]
-        }
+        # Create a test document in validations collection
+        test_validation_doc = validations_ref.document('test_validation')
+        test_validation_doc.set({
+            'user_id': 'test_user',
+            'project_id': 'test_project',
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'image_url': '/static/uploads/test.jpg',
+            'stage': 'foundation',
+            'sub_stage': 'excavation',
+            'confidence': 0.0,
+            'description': 'Test validation document',
+            'status': 'pending_review'
+        })
+        
+        # Delete test documents
+        test_user_doc.delete()
+        test_project_doc.delete()
+        test_validation_doc.delete()
+        
+        # Create composite indexes
+        indexes = [
+            {
+                'collectionGroup': 'validations',
+                'queryScope': 'COLLECTION',
+                'fields': [
+                    {'fieldPath': 'user_id', 'order': 'ASCENDING'},
+                    {'fieldPath': 'timestamp', 'order': 'DESCENDING'}
+                ]
+            },
+            {
+                'collectionGroup': 'validations',
+                'queryScope': 'COLLECTION',
+                'fields': [
+                    {'fieldPath': 'project_id', 'order': 'ASCENDING'},
+                    {'fieldPath': 'timestamp', 'order': 'DESCENDING'}
+                ]
+            },
+            {
+                'collectionGroup': 'projects',
+                'queryScope': 'COLLECTION',
+                'fields': [
+                    {'fieldPath': 'status', 'order': 'ASCENDING'},
+                    {'fieldPath': 'progress_percentage', 'order': 'DESCENDING'}
+                ]
+            }
+        ]
         
         print("Database initialized successfully!")
-        print("\nFirestore collections and indexes created:")
-        print("1. validations collection")
+        print("\nFirestore collections created:")
+        print("1. users collection")
+        print("   - email (string)")
+        print("   - display_name (string)")
+        print("   - role (string)")
+        print("   - created_at (timestamp)")
+        print("   - active_projects (array)")
+        
+        print("\n2. projects collection")
+        print("   - name (string)")
+        print("   - location (string)")
+        print("   - start_date (timestamp)")
+        print("   - expected_completion_date (timestamp)")
+        print("   - current_stage (string)")
+        print("   - progress_percentage (number)")
+        print("   - team_members (array)")
+        print("   - status (string)")
+        
+        print("\n3. validations collection")
+        print("   - user_id (string)")
+        print("   - project_id (string)")
         print("   - timestamp (timestamp)")
         print("   - image_url (string)")
         print("   - stage (string)")
         print("   - sub_stage (string)")
         print("   - confidence (number)")
-        print("   - description (string, optional)")
-        print("\nComposite indexes:")
-        print("1. validations_by_timestamp_stage")
-        print("   - timestamp (DESCENDING)")
-        print("   - stage (ASCENDING)")
+        print("   - description (string)")
+        print("   - status (string)")
+        
+        print("\nComposite indexes created:")
+        print("1. validations_by_user_timestamp")
+        print("2. validations_by_project_timestamp")
+        print("3. projects_by_status_progress")
         
         return True
         

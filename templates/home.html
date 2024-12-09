@@ -1,298 +1,147 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Construction Stage Classification</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
-    <style>
-        /* CSS to optimize image preview size */
-        #imagePreview {
-            display: none; /* Initially hidden */
-            max-width: 400px; /* Set a maximum width */
-            max-height: 300px; /* Set a maximum height */
-            width: auto; /* Maintain aspect ratio */
-            height: auto; /* Maintain aspect ratio */
-        }
-    </style>
-</head>
-<body>
-    <div class="container mt-5">
-        <h1>Construction Stage Classification</h1>
-        <p>Upload a construction site image, select the stage, and validate if the image matches the stage.</p>
-        
-        <form id="uploadForm" enctype="multipart/form-data">
-            <div class="mb-3">
-                <label for="image" class="form-label">Upload Image</label>
-                <input type="file" class="form-control" id="image" name="image" accept="image/*" required>
-            </div>
-            <div class="mb-3">
-                <label for="stage" class="form-label">Select Construction Stage</label>
-                <select class="form-select form-select-lg mb-3" id="stage" name="stage" required>
-                    <option value="" disabled selected>Choose a construction stage...</option>
-                    <option value="foundation">Foundation</option>
-                    <option value="superstructure">Superstructure</option>
-                    <option value="facade">Facade</option>
-                    <option value="Interior">Interior</option>
-                    <option value="finishing works">Finishing Works</option>
-                </select>
-            </div>
-            <div class="mb-3">
-                <img id="imagePreview" src="" alt="Image Preview" />
-            </div>
-            <div class="form-check mb-3">
-                <input type="checkbox" class="form-check-input" id="proceed" name="proceed" value="true">
-                <label class="form-check-label" for="proceed">Proceed if mismatch</label>
-            </div>
-            <div class="form-check mb-3">
-                <input type="checkbox" class="form-check-input" id="describe" name="describe" value="true">
-                <label class="form-check-label" for="describe">Generate Image Description</label>
-            </div>
-            <button type="submit" class="btn btn-primary">Validate Image</button>
-        </form>
-        <hr>
-        <div id="output" class="mt-3">
-            <h3>Results:</h3>
-            <div id="validationResult" class="alert alert-info">N/A</div>
-            <button id="compareButton" class="btn btn-secondary mt-2" style="display: none;">Compare with Previous</button>
-            <button id="generateReportBtn" class="btn btn-primary mt-2" style="display: none;">Generate Report</button>
-            <div class="mt-3">
-                <h4>Image Description:</h4>
-                <div id="descriptionResult" class="alert alert-info">
-                    <span class="description-text">N/A</span>
-                    <div class="rate-limit-message d-none text-danger">
-                        <hr>
-                        <strong>Note:</strong> Image description is temporarily unavailable due to API rate limits. 
-                        Please try again in about an hour.
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} - Construction Stage Classification{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1>{{ project.name }} - Construction Stage Classification</h1>
+            <p class="text-muted">Location: {{ project.location }} | Current Stage: {{ project.current_stage }}</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('expert_dashboard' if session.role == 'expert' else 'worker_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Project Progress</h5>
+                    <div class="progress">
+                        <div class="progress-bar" role="progressbar" 
+                             style="width: {{ project.progress_percentage|default(0) }}%;" 
+                             aria-valuenow="{{ project.progress_percentage|default(0) }}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            {{ "%.1f"|format(project.progress_percentage|default(0)) }}%
+                        </div>
                     </div>
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            Current Stage: {{ project.current_stage|default('Not started') }}<br>
+                            {% if project.current_sub_stage %}
+                            Sub-stage: {{ project.current_sub_stage }}
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Project Details</h5>
+                    <p>
+                        <strong>Start Date:</strong> {{ project.start_date }}<br>
+                        <strong>Expected Completion:</strong> {{ project.expected_completion_date or 'Not set' }}<br>
+                        <strong>Status:</strong> {{ project.status }}
+                    </p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Comparison Modal -->
-    <div class="modal fade" id="comparisonModal" tabindex="-1" role="dialog">
-        <div class="modal-dialog modal-lg" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Compare Progress</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="row">
+        <div class="col-md-12">
+            <h2>Image Validation</h2>
+            <p>Upload a construction site image, select the stage, and validate if the image matches the stage.</p>
+            
+            <form action="{{ url_for('validate_image') }}" method="POST" enctype="multipart/form-data" id="validationForm">
+                <input type="hidden" id="project-id" name="project_id" value="{{ project.id }}">
+                <div class="mb-3">
+                    <label for="image" class="form-label">Upload Image</label>
+                    <input type="file" class="form-control" id="image" name="file" accept="image/*" required>
                 </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label for="previousValidationSelect">Select Previous Validation:</label>
-                        <select class="form-control" id="previousValidationSelect">
-                            <option value="">Select a validation...</option>
-                        </select>
-                    </div>
-                    <div class="text-center mb-3">
-                        <button id="compareProgressBtn" class="btn btn-primary" style="display: none;">
-                            Compare Progress
-                        </button>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Previous Validation</h6>
-                            <div id="previousValidationDetails"></div>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Current Validation</h6>
-                            <div id="currentValidationDetails"></div>
-                        </div>
-                    </div>
-                    <div id="comparisonResult" class="alert mt-4" style="display: none;"></div>
+                <div class="mb-3">
+                    <label for="stage" class="form-label">Select Construction Stage</label>
+                    <select class="form-select form-select-lg mb-3" id="stage" name="stage" required>
+                        <option value="" disabled selected>Choose a construction stage...</option>
+                        <option value="foundation">Foundation</option>
+                        <option value="superstructure">Superstructure</option>
+                        <option value="facade">Facade</option>
+                        <option value="Interior">Interior</option>
+                        <option value="finishing works">Finishing Works</option>
+                    </select>
                 </div>
+                <div class="mb-3">
+                    <img id="imagePreview" src="" alt="Image Preview" style="display: none; max-width: 400px; max-height: 300px; width: auto; height: auto;" />
+                </div>
+                <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="proceed" name="proceed" value="true">
+                    <label class="form-check-label" for="proceed">Proceed if mismatch</label>
+                </div>
+                <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="describe" name="describe" value="true">
+                    <label class="form-check-label" for="describe">Generate Image Description</label>
+                </div>
+                <button type="submit" class="btn btn-primary">Validate Image</button>
+            </form>
+
+            <div class="mt-4">
+                <h3>Results</h3>
+                <div id="resultArea"></div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script>
-        $(document).ready(function () {
-            $('#image').on('change', function (event) {
-                const file = event.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function (e) {
-                        $('#imagePreview').attr('src', e.target.result).show();
-                    };
-                    reader.readAsDataURL(file);
-                } else {
-                    $('#imagePreview').hide();
-                }
-            });
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Compare Progress</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-5">
+                    <label for="previous-validation">Previous Validation:</label>
+                    <select class="form-control" id="previous-validation">
+                        <option value="">Select previous validation</option>
+                        {% for validation in validations %}
+                        <option value="{{ validation.id }}">
+                            {{ validation.timestamp.strftime('%Y-%m-%d %H:%M:%S') if validation.timestamp else 'No timestamp' }} - 
+                            {{ validation.primary_stage }} ({{ validation.specific_classification }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <label for="current-validation">Current Validation:</label>
+                    <select class="form-control" id="current-validation">
+                        <option value="">Select current validation</option>
+                        {% for validation in validations %}
+                        <option value="{{ validation.id }}">
+                            {{ validation.timestamp.strftime('%Y-%m-%d %H:%M:%S') if validation.timestamp else 'No timestamp' }} - 
+                            {{ validation.primary_stage }} ({{ validation.specific_classification }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" id="compareBtn">Compare</button>
+                </div>
+            </div>
+            <div id="comparison-results" style="display: none;">
+                <!-- Content will be dynamically populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
 
-            $('#uploadForm').on('submit', function (event) {
-                event.preventDefault();
-                
-                var formData = new FormData();
-                var fileInput = $('#image')[0];
-                
-                if (fileInput.files.length > 0) {
-                    formData.append('file', fileInput.files[0]);
-                    
-                    // Explicitly set checkbox values
-                    formData.set('proceed', $('#proceed').is(':checked'));
-                    formData.set('describe', $('#describe').is(':checked'));
-                    formData.set('stage', $('#stage').val());
-                    
-                    // Reset results and show loading state
-                    $('#validationResult')
-                        .removeClass('alert-danger alert-success')
-                        .addClass('alert-info')
-                        .text('Processing...');
-                    
-                    $('#descriptionResult')
-                        .removeClass('alert-danger alert-success')
-                        .addClass('alert-info')
-                        .find('.description-text')
-                        .text('Processing...');
-                    
-                    $('#descriptionResult .rate-limit-message').addClass('d-none');
-
-                    $.ajax({
-                        url: '/validate_image',
-                        type: 'POST',
-                        data: formData,
-                        processData: false,
-                        contentType: false,
-                        success: function(response) {
-                            // Show comparison button only after successful validation
-                            $('#compareButton').show();
-                            // Store the current validation ID for comparison
-                            window.currentValidationId = response.validation_id;
-                            
-                            if (response.success) {
-                                $('#validationResult')
-                                    .removeClass('alert-info alert-danger')
-                                    .addClass('alert-success')
-                                    .html(response.message);
-                                    
-                                // Show generate report button and set up click handler
-                                $('#generateReportBtn')
-                                    .show()
-                                    .off('click')
-                                    .on('click', function() {
-                                        window.location.href = `/generate_report/${response.validation_id}`;
-                                    });
-                            } else {
-                                $('#validationResult')
-                                    .removeClass('alert-info alert-success')
-                                    .addClass('alert-danger')
-                                    .html(response.message);
-                                    
-                                // Hide generate report button for failed validations
-                                $('#generateReportBtn').hide();
-                            }
-
-                            if (response.description) {
-                                $('#descriptionResult')
-                                    .removeClass('alert-info alert-danger')
-                                    .addClass('alert-success')
-                                    .find('.description-text')
-                                    .text(response.description);
-                            }
-                        },
-                        error: function(xhr) {
-                            $('#validationResult')
-                                .removeClass('alert-info alert-success')
-                                .addClass('alert-danger')
-                                .text('Error: ' + xhr.responseText);
-                            
-
-                            if (xhr.status === 429) {
-                                $('#descriptionResult .rate-limit-message').removeClass('d-none');
-                            }
-                        }
-                    });
-                }
-            });
-
-            // Handle compare button click
-            $('#compareButton').click(function() {
-                // Load previous validations
-                $.get('/get_validations', function(response) {
-                    const select = $('#previousValidationSelect');
-                    select.empty();
-                    select.append('<option value="">Select a validation...</option>');
-                    
-                    response.validations.forEach(function(validation) {
-                        select.append(`<option value="${validation.id}">${validation.timestamp} - ${validation.stage}</option>`);
-                    });
-                    
-                    new bootstrap.Modal('#comparisonModal').show();
-                });
-            });
-
-            // Handle previous validation selection
-            $('#previousValidationSelect').change(function() {
-                const previousId = $(this).val();
-                if (previousId) {
-                    $('#compareProgressBtn').show();
-                } else {
-                    $('#compareProgressBtn').hide();
-                }
-            });
-
-            // Handle compare button click
-            $('#compareProgressBtn').click(function() {
-                const previousId = $('#previousValidationSelect').val();
-                if (!previousId) return;
-
-                // Reset previous comparison result
-                $('#comparisonResult').hide();
-
-                $.post('/compare', {
-                    previous_doc_id: previousId,
-                    current_doc_id: window.currentValidationId
-                }, function(response) {
-                    // First update the validation details
-                    $('#previousValidationDetails').html(`
-                        <div class="card">
-                            <div class="card-body">
-                                <p><strong>Stage:</strong> ${response.previous.stage}</p>
-                                <p><strong>Sub-stage:</strong> ${response.previous.sub_stage}</p>
-                                <img src="${response.previous.image_url}" class="img-fluid">
-                            </div>
-                        </div>
-                    `);
-
-                    $('#currentValidationDetails').html(`
-                        <div class="card">
-                            <div class="card-body">
-                                <p><strong>Stage:</strong> ${response.current.stage}</p>
-                                <p><strong>Sub-stage:</strong> ${response.current.sub_stage}</p>
-                                <img src="${response.current.image_url}" class="img-fluid">
-                            </div>
-                        </div>
-                    `);
-
-                    // Then show the comparison result
-                    const result = $('#comparisonResult');
-                    result.show();
-                    
-                    if (response.progress === 'advanced') {
-                        result.removeClass('alert-danger alert-warning')
-                            .addClass('alert-success')
-                            .html(response.message.replace(/\n/g, '<br>'));
-                    } else if (response.progress === 'same') {
-                        result.removeClass('alert-danger alert-success')
-                            .addClass('alert-warning')
-                            .html(response.message.replace(/\n/g, '<br>'));
-                    } else {
-                        result.removeClass('alert-success alert-warning')
-                            .addClass('alert-danger')
-                            .html(response.message.replace(/\n/g, '<br>'));
-                    }
-                });
-            });
-
-            // Handle modal close button
-            $('#comparisonModal .btn-close').click(function() {
-                $('#comparisonModal').modal('hide');
-            });
-        });
-    </script>
-</body>
-</html>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Create Project - ArkitraCk{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Create New Project</h2>
+    <form method="POST" action="{{ url_for('create_project') }}">
+        <div class="mb-3">
+            <label for="project_name" class="form-label">Project Name</label>
+            <input type="text" class="form-control" id="project_name" name="project_name" required>
+        </div>
+        
+        <div class="mb-3">
+            <label for="worker_id" class="form-label">Assign Worker</label>
+            <select class="form-select" id="worker_id" name="worker_id" required>
+                <option value="">Select a worker</option>
+                {% for worker in workers %}
+                <option value="{{ worker.id }}">{{ worker.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="latitude" class="form-label">Latitude</label>
+                <input type="number" step="any" class="form-control" id="latitude" name="latitude" required>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="longitude" class="form-label">Longitude</label>
+                <input type="number" step="any" class="form-control" id="longitude" name="longitude" required>
+            </div>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Select Location on Map</label>
+            <div id="map" style="height: 400px;"></div>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Create Project</button>
+    </form>
+</div>
+
+<!-- Leaflet.js CSS and JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+<script>
+    // Initialize map
+    const map = L.map('map').setView([20.5937, 78.9629], 5); // Default center on India
+    let marker = null;
+    
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    
+    // Handle map clicks
+    map.on('click', function(e) {
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+        
+        // Update form inputs
+        document.getElementById('latitude').value = lat.toFixed(6);
+        document.getElementById('longitude').value = lng.toFixed(6);
+        
+        // Update or create marker
+        if (marker) {
+            marker.setLatLng([lat, lng]);
+        } else {
+            marker = L.marker([lat, lng]).addTo(map);
+        }
+    });
+    
+    // Handle manual input changes
+    document.getElementById('latitude').addEventListener('change', updateMarker);
+    document.getElementById('longitude').addEventListener('change', updateMarker);
+    
+    function updateMarker() {
+        const lat = parseFloat(document.getElementById('latitude').value);
+        const lng = parseFloat(document.getElementById('longitude').value);
+        
+        if (!isNaN(lat) && !isNaN(lng)) {
+            if (marker) {
+                marker.setLatLng([lat, lng]);
+            } else {
+                marker = L.marker([lat, lng]).addTo(map);
+            }
+            map.setView([lat, lng], 15);
+        }
+    }
+</script>
+{% endblock %}

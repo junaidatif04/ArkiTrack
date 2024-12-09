@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Project Map - ArkitraCk{% endblock %}
+
+{% block head %}
+{{ super() }}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+    #map {
+        height: calc(100vh - 56px);
+        width: 100%;
+        z-index: 1;
+    }
+    .main-content {
+        height: calc(100vh - 56px);
+        padding: 0;
+        margin: 0;
+    }
+    .sidebar {
+        height: 100%;
+        overflow-y: auto;
+        padding: 15px;
+        background-color: #f8f9fa;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        z-index: 2;
+    }
+    .project-list {
+        height: calc(100% - 50px);
+        overflow-y: auto;
+    }
+    .project-item {
+        border-left: 4px solid transparent;
+        transition: all 0.3s ease;
+    }
+    .project-item:hover {
+        border-left-color: #007bff;
+        background-color: #f0f0f0;
+    }
+    .project-item.active {
+        border-left-color: #0056b3;
+        background-color: #e9ecef;
+    }
+    .no-projects {
+        text-align: center;
+        padding: 20px;
+        color: #666;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <div class="row g-0" style="height: 100%;">
+        <!-- Project List Sidebar -->
+        <div class="col-md-3 sidebar">
+            <h4 class="mb-3">Projects</h4>
+            <div class="list-group project-list">
+                {% if projects %}
+                    {% for project in projects %}
+                    <a href="#" class="list-group-item list-group-item-action project-item" 
+                       data-project-id="{{ project.id }}"
+                       data-lat="{{ project.latitude }}"
+                       data-lng="{{ project.longitude }}">
+                        <h6 class="mb-1">{{ project.name }}</h6>
+                        <p class="mb-1 small">Status: {{ project.status }}</p>
+                        <p class="mb-1 small">Stage: {{ project.stage }}</p>
+                        <div class="progress mb-1" style="height: 5px;">
+                            <div class="progress-bar" role="progressbar" 
+                                 style="width: {{ project.progress }}%;" 
+                                 aria-valuenow="{{ project.progress }}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                            </div>
+                        </div>
+                        <small class="text-muted">Progress: {{ project.progress }}%</small>
+                    </a>
+                    {% endfor %}
+                {% else %}
+                    <div class="no-projects">
+                        <p>No projects with location data available</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Map Container -->
+        <div class="col-md-9">
+            <div id="map"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize map
+    var map = L.map('map');
+    
+    // Add the tile layer
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: ' OpenStreetMap contributors',
+        maxZoom: 19
+    }).addTo(map);
+
+    // Store markers in an object for easy access
+    const markers = {};
+    const bounds = L.latLngBounds();
+    
+    // Add markers for each project
+    {% for project in projects %}
+    if ({{ project.latitude|tojson }} && {{ project.longitude|tojson }}) {
+        const lat = {{ project.latitude|tojson }};
+        const lng = {{ project.longitude|tojson }};
+        const marker = L.marker([lat, lng])
+            .bindPopup(`
+                <strong>{{ project.name }}</strong><br>
+                Status: {{ project.status }}<br>
+                Stage: {{ project.stage }}<br>
+                Progress: {{ project.progress }}%
+            `);
+        markers['{{ project.id }}'] = marker;
+        marker.addTo(map);
+        bounds.extend([lat, lng]);
+    }
+    {% endfor %}
+    
+    // Fit map to bounds if there are projects
+    if (Object.keys(markers).length > 0) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+    } else {
+        // Default view of India if no projects
+        map.setView([20.5937, 78.9629], 5);
+    }
+    
+    // Handle project list item clicks
+    document.querySelectorAll('.project-list .project-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            const projectId = item.dataset.projectId;
+            const lat = parseFloat(item.dataset.lat);
+            const lng = parseFloat(item.dataset.lng);
+            
+            if (lat && lng) {
+                // Center map on clicked project
+                map.setView([lat, lng], 15);
+                
+                // Open popup for the project
+                if (markers[projectId]) {
+                    markers[projectId].openPopup();
+                }
+                
+                // Highlight the selected project in the list
+                document.querySelectorAll('.project-list .project-item').forEach(i => {
+                    i.classList.remove('active');
+                });
+                item.classList.add('active');
+            }
+        });
+    });
+
+    // Force map to recalculate its size after a short delay
+    setTimeout(() => {
+        map.invalidateSize();
+    }, 100);
+});
+</script>
+{% endblock %}
