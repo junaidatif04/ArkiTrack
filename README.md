@@ -2,7 +2,7 @@
 
 ## Overview
 
-ArkiTrack is a web application designed for monitoring the construction progress of buildings using deep learning convolutional neural network (CNN) models. It analyzes images from various construction phases, such as foundation, superstructure, facade, interior, and finishing, to track and visualize progress. The application leverages pre-trained CNN architectures like MobileNet, Inception, and VGG16 for image classification and analysis.
+ArkiTrack is a web application designed for monitoring the construction progress of buildings using deep learning convolutional neural network (CNN) models. It analyzes images from various construction phases, such as foundation, superstructure, facade, interior, and finishing, to track and visualize progress. The application leverages pre-trained CNN architectures like MobileNet, Inception, and VGG16 for image classification and analysis which were fine tuned on our custom dataset.
 
 Key components include:
 - User authentication system
